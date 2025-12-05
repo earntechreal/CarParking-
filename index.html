@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Precision Parking Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #2c2c2c;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none; /* Prevent browser zooming/scrolling */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+        }
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .hud-top {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            color: white;
+            text-shadow: 1px 1px 2px black;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
+        }
+        .message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(17, 24, 39, 0.95);
+            color: white;
+            padding: 30px;
+            border-radius: 12px;
+            text-align: center;
+            border: 2px solid #4ade80;
+            pointer-events: auto;
+            display: none;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.8);
+            width: 80%;
+            max-width: 400px;
+            z-index: 50;
+        }
+        .message-box h2 { margin-top: 0; color: #4ade80; font-size: 1.8rem; margin-bottom: 0.5rem;}
+        .message-box p { color: #d1d5db; margin-bottom: 1.5rem; }
+        
+        .action-btn {
+            background: #4ade80;
+            color: #064e3b;
+            border: none;
+            padding: 12px 30px;
+            font-size: 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+            width: 100%;
+            touch-action: manipulation;
+        }
+        .action-btn:active { transform: scale(0.96); background: #22c55e; }
+        
+        /* Mobile Controls */
+        .controls {
+            display: none; /* Hidden on desktop by default, shown via JS if touch */
+            pointer-events: auto;
+            width: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 10px;
+        }
+        .d-pad, .pedals {
+            display: flex;
+            gap: 15px;
+        }
+        .control-btn {
+            width: 75px;
+            height: 75px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(4px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 28px;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            transition: transform 0.1s, background 0.1s;
+        }
+        .control-btn:active, .control-btn.active {
+            background: rgba(255, 255, 255, 0.4);
+            transform: scale(0.92);
+            border-color: white;
+        }
+        .pedal-rect {
+            border-radius: 12px;
+            width: 65px;
+            height: 90px;
+        }
+        .brake { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; }
+        .brake:active, .brake.active { background: rgba(239, 68, 68, 0.5); }
+        
+        .gas { background: rgba(34, 197, 94, 0.2); border-color: #22c55e; }
+        .gas:active, .gas.active { background: rgba(34, 197, 94, 0.5); }
+
+        @media (hover: none) and (pointer: coarse) {
+            .controls { display: flex; }
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="ui-layer">
+        <div class="hud-top">
+            <div>
+                <div class="text-2xl font-black text-green-400 italic tracking-wider">LEVEL <span id="levelDisplay">1</span></div>
+                <div class="text-sm font-mono text-gray-300">Moves: <span id="movesDisplay">0</span></div>
+            </div>
+            <div class="text-right">
+                <div class="text-xl font-bold text-yellow-400" id="statusText">PARK THE CAR</div>
+                <div class="text-xs opacity-70">Avoid Walls</div>
+            </div>
+        </div>
+
+        <!-- Touch Controls -->
+        <div class="controls">
+            <div class="d-pad">
+                <div class="control-btn" id="btnLeft">←</div>
+                <div class="control-btn" id="btnRight">→</div>
+            </div>
+            <div class="pedals">
+                <div class="control-btn pedal-rect brake" id="btnBrake">B</div>
+                <div class="control-btn pedal-rect gas" id="btnGas">A</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="startScreen" class="message-box" style="display: block;">
+        <h2 class="text-3xl text-white">PARKING SIM</h2>
+        <p class="mb-4 text-gray-400">Drive carefully. Don't scratch the paint.</p>
+        <button class="action-btn" onclick="startGame()">START ENGINE</button>
+    </div>
+
+    <div id="winScreen" class="message-box">
+        <h2>PERFECT PARK!</h2>
+        <p class="text-lg">That was smooth.</p>
+        <button class="action-btn" onclick="nextLevel()">NEXT LEVEL</button>
+    </div>
+
+    <div id="crashScreen" class="message-box" style="border-color: #ef4444;">
+        <h2 style="color: #ef4444">CRASHED!</h2>
+        <p>You hit an obstacle.</p>
+        <button class="action-btn" style="background: #ef4444; color: white;" onclick="restartLevel()">TRY AGAIN</button>
+    </div>
+
+<script>
+/**
+ * Game Constants & Setup
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let animationId;
+
+// Physics Constants
+const MAX_SPEED = 3.5;
+const MAX_REVERSE_SPEED = -2;
+const ACCELERATION = 0.15;
+const FRICTION = 0.05;
+const TURN_SPEED = 0.05;
+const BRAKE_FORCE = 0.3;
+
+// Game State
+let gameState = {
+    level: 1,
+    moves: 0,
+    active: false,
+    parkedTimer: 0,
+    width: window.innerWidth,
+    height: window.innerHeight
+};
+
+// Input State
+const keys = {
+    ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false,
+    w: false, s: false, a: false, d: false,
+    Space: false
+};
+
+// Classes
+class Car {
+    constructor(x, y, angle) {
+        this.x = x;
+        this.y = y;
+        this.width = 36;  // Slightly narrower for mobile clearance
+        this.height = 65;
+        this.angle = angle; // in radians
+        this.speed = 0;
+        this.color = '#3b82f6';
+        this.crashed = false;
+        
+        // Trail for visual flair
+        this.trail = [];
+    }
+
+    update() {
+        if (this.crashed || !gameState.active) return;
+
+        // Input Handling
+        const up = keys.ArrowUp || keys.w || document.getElementById('btnGas').classList.contains('active');
+        const down = keys.ArrowDown || keys.s || document.getElementById('btnBrake').classList.contains('active');
+        const left = keys.ArrowLeft || keys.a || document.getElementById('btnLeft').classList.contains('active');
+        const right = keys.ArrowRight || keys.d || document.getElementById('btnRight').classList.contains('active');
+        const brake = keys.Space; // Handbrake
+
+        // Acceleration
+        if (up) {
+            this.speed += ACCELERATION;
+        } else if (down) {
+            this.speed -= ACCELERATION;
+        } else {
+            // Natural friction
+            if (this.speed > 0) this.speed -= FRICTION;
+            if (this.speed < 0) this.speed += FRICTION;
+            if (Math.abs(this.speed) < FRICTION) this.speed = 0;
+        }
+
+        // Braking
+        if (brake) {
+            if (this.speed > 0) this.speed -= BRAKE_FORCE;
+            if (this.speed < 0) this.speed += BRAKE_FORCE;
+            if (Math.abs(this.speed) < BRAKE_FORCE) this.speed = 0;
+        }
+
+        // Cap speed
+        if (this.speed > MAX_SPEED) this.speed = MAX_SPEED;
+        if (this.speed < MAX_REVERSE_SPEED) this.speed = MAX_REVERSE_SPEED;
+
+        // Steering (Ackermann-ish: only turn if moving)
+        if (Math.abs(this.speed) > 0.1) {
+            const dir = this.speed > 0 ? 1 : -1; // Reverse steering logic
+            if (left) this.angle -= TURN_SPEED * dir;
+            if (right) this.angle += TURN_SPEED * dir;
+        }
+
+        // Update Position
+        this.x += Math.sin(this.angle) * this.speed;
+        this.y -= Math.cos(this.angle) * this.speed;
+
+        // Add trail points occasionally
+        if (Math.abs(this.speed) > 1 && Math.random() > 0.8) {
+            this.trail.push({x: this.x, y: this.y, alpha: 0.3, angle: this.angle});
+            if (this.trail.length > 20) this.trail.shift();
+        }
+    }
+
+    draw() {
+        ctx.save();
+        
+        // Draw Trail (Tire marks)
+        this.trail.forEach((point, i) => {
+            point.alpha -= 0.005;
+            if(point.alpha > 0) {
+                ctx.save();
+                ctx.translate(point.x, point.y);
+                ctx.rotate(point.angle);
+                ctx.fillStyle = `rgba(0,0,0,${point.alpha})`;
+                ctx.fillRect(-12, -10, 6, 6);
+                ctx.fillRect(6, -10, 6, 6);
+                ctx.restore();
+            }
+        });
+
+        // Translate to car center and rotate
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        roundRect(ctx, -this.width/2 + 4, -this.height/2 + 4, this.width, this.height, 8, true, false);
+
+        // Body
+        ctx.fillStyle = this.crashed ? '#ef4444' : this.color;
+        // Main Chassis
+        roundRect(ctx, -this.width/2, -this.height/2, this.width, this.height, 8, true, false);
+
+        // Roof/Windshield area
+        ctx.fillStyle = '#1e293b';
+        roundRect(ctx, -this.width/2 + 4, -this.height/2 + 15, this.width - 8, this.height - 28, 4, true, false);
+        
+        // Rear Window
+        ctx.fillStyle = '#64748b';
+        ctx.fillRect(-this.width/2 + 6, -this.height/2 + 48, this.width - 12, 6);
+        
+        // Front Windshield
+        ctx.fillRect(-this.width/2 + 6, -this.height/2 + 18, this.width - 12, 9);
+
+        // Headlights
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath();
+        ctx.arc(-10, -this.height/2 + 3, 3, 0, Math.PI*2);
+        ctx.arc(10, -this.height/2 + 3, 3, 0, Math.PI*2);
+        ctx.fill();
+
+        // Brake lights
+        ctx.fillStyle = (keys.ArrowDown || keys.s || keys.Space || document.getElementById('btnBrake').classList.contains('active')) ? '#ff0000' : '#7f1d1d';
+        ctx.beginPath();
+        ctx.arc(-10, this.height/2 - 3, 3, 0, Math.PI*2);
+        ctx.arc(10, this.height/2 - 3, 3, 0, Math.PI*2);
+        ctx.fill();
+
+        // Headlight Beams (if active)
+        if (gameState.active) {
+            ctx.globalCompositeOperation = 'screen';
+            ctx.fillStyle = 'rgba(255, 255, 200, 0.15)';
+            ctx.beginPath();
+            ctx.moveTo(-12, -this.height/2);
+            ctx.lineTo(-35, -this.height/2 - 120);
+            ctx.quadraticCurveTo(0, -this.height/2 - 140, 35, -this.height/2 - 120);
+            ctx.lineTo(12, -this.height/2);
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+        }
+
+        ctx.restore();
+    }
+
+    getBounds() {
+        const cos = Math.cos(this.angle);
+        const sin = Math.sin(this.angle);
+        const hw = this.width / 2;
+        const hh = this.height / 2;
+
+        const corners = [
+            {x: -hw, y: -hh},
+            {x: hw, y: -hh},
+            {x: hw, y: hh},
+            {x: -hw, y: hh}
+        ];
+
+        return corners.map(p => ({
+            x: this.x + (p.x * cos - p.y * sin),
+            y: this.y + (p.x * sin + p.y * cos)
+        }));
+    }
+}
+
+class Obstacle {
+    constructor(x, y, w, h, type = 'wall') {
+        this.x = x;
+        this.y = y;
+        this.w = w;
+        this.h = h;
+        this.type = type;
+    }
+
+    draw() {
+        if (this.type === 'car') {
+            ctx.save();
+            ctx.translate(this.x + this.w/2, this.y + this.h/2);
+            ctx.fillStyle = '#64748b';
+            roundRect(ctx, -this.w/2, -this.h/2, this.w, this.h, 6, true, false);
+            ctx.fillStyle = '#1e293b'; // Windshields
+            ctx.fillRect(-this.w/2 + 5, -this.h/2 + 10, this.w - 10, 12);
+            ctx.fillRect(-this.w/2 + 5, this.h/2 - 18, this.w - 10, 8);
+            ctx.restore();
+        } else if (this.type === 'curb') {
+            ctx.fillStyle = '#d4d4d8';
+            ctx.fillRect(this.x, this.y, this.w, this.h);
+            ctx.strokeStyle = '#eab308';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([10, 10]);
+            ctx.strokeRect(this.x, this.y, this.w, this.h);
+            ctx.setLineDash([]);
+        } else {
+            // Wall
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(this.x, this.y, this.w, this.h);
+            ctx.fillStyle = '#1e293b'; // Border
+            ctx.fillRect(this.x, this.y, 2, this.h); // Left highlight
+            ctx.fillRect(this.x + this.w - 2, this.y, 2, this.h); // Right highlight
+        }
+    }
+}
+
+class ParkingSpot {
+    constructor(x, y, angle) {
+        this.x = x;
+        this.y = y;
+        this.width = 50;
+        this.height = 80;
+        this.angle = angle;
+    }
+
+    draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        
+        ctx.beginPath();
+        ctx.moveTo(-this.width/2, -this.height/2);
+        ctx.lineTo(-this.width/2, this.height/2);
+        ctx.lineTo(this.width/2, this.height/2);
+        ctx.lineTo(this.width/2, -this.height/2);
+        ctx.stroke();
+
+        // Pulsing Effect
+        const pulse = (Math.sin(Date.now() / 300) + 1) / 2;
+        ctx.fillStyle = `rgba(74, 222, 128, ${0.1 + pulse * 0.15})`;
+        ctx.fillRect(-this.width/2 + 2, -this.height/2 + 2, this.width - 4, this.height - 4);
+        
+        ctx.restore();
+    }
+
+    checkParked(car) {
+        const dist = Math.hypot(car.x - this.x, car.y - this.y);
+        let angleDiff = Math.abs(normalizeAngle(car.angle) - normalizeAngle(this.angle));
+        if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
+        const isStopped = Math.abs(car.speed) < 0.1;
+
+        if (dist < 15 && angleDiff < 0.2 && isStopped) {
+            return true;
+        }
+        return false;
+    }
+}
+
+/**
+ * Level Configurations
+ */
+let player;
+let obstacles = [];
+let targetSpot;
+
+const levels = [
+    {
+        setup: (w, h) => {
+            // Safe spawn: ensure it's not in the wall (wall is 20px)
+            player = new Car(w * 0.5, h * 0.8, 0);
+            targetSpot = new ParkingSpot(w * 0.5, h * 0.25, 0);
+            obstacles = [
+                new Obstacle(0, 0, 20, h), 
+                new Obstacle(w - 20, 0, 20, h), 
+                new Obstacle(0, 0, w, 20), 
+                new Obstacle(0, h - 20, w, 20),
+            ];
+        }
+    },
+    {
+        setup: (w, h) => {
+            // Shifted start for more room
+            const startX = Math.max(80, w * 0.2); 
+            player = new Car(startX, h * 0.8, 0);
+            
+            const targetX = Math.min(w - 80, w * 0.8);
+            targetSpot = new ParkingSpot(targetX, h * 0.2, 0);
+            
+            obstacles = [
+                new Obstacle(w * 0.5 - 15, h * 0.3, 30, h * 0.4), // Center pillar
+                new Obstacle(0, 0, w, 20),
+                new Obstacle(0, h-20, w, 20),
+                new Obstacle(0, 0, 20, h),
+                new Obstacle(w-20, 0, 20, h),
+            ];
+        }
+    },
+    {
+        setup: (w, h) => {
+            // FIX: Ensure spawn is not inside left wall (x=20)
+            // Car rotated 90deg is ~70px long. Center needs to be > 35+20=55px
+            const safeX = Math.max(100, w * 0.15); 
+            
+            player = new Car(safeX, h * 0.5, Math.PI / 2); // Facing right
+            targetSpot = new ParkingSpot(w * 0.85, h * 0.5, 0); 
+            
+            const parkX = w * 0.85;
+            obstacles = [
+                new Obstacle(parkX - 25 - 40 - 15, h * 0.5 - 40, 40, 80, 'car'), // Left car
+                new Obstacle(parkX + 25 + 15, h * 0.5 - 40, 40, 80, 'car'), // Right car
+                
+                new Obstacle(0, 0, w, 20),
+                new Obstacle(0, h-20, w, 20),
+                new Obstacle(0, 0, 20, h),
+                new Obstacle(w-20, 0, 20, h),
+            ];
+        }
+    }
+];
+
+function initLevel(levelIndex) {
+    if (levelIndex > levels.length) {
+        // Loop back to 1 but keep it interesting? For now just reset.
+        levelIndex = 1;
+        gameState.level = 1;
+    }
+    
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    gameState.width = canvas.width;
+    gameState.height = canvas.height;
+
+    const setupFn = levels[levelIndex - 1].setup;
+    setupFn(canvas.width, canvas.height);
+
+    gameState.active = true;
+    gameState.parkedTimer = 0;
+    
+    // Clear any stuck states
+    player.crashed = false;
+    player.speed = 0;
+    
+    document.getElementById('levelDisplay').innerText = gameState.level;
+    document.getElementById('statusText').innerText = "PARK THE CAR";
+    document.getElementById('statusText').className = "text-xl font-bold text-yellow-400";
+    
+    Object.keys(keys).forEach(k => keys[k] = false);
+}
+
+function startGame() {
+    document.getElementById('startScreen').style.display = 'none';
+    if (!animationId) {
+        initLevel(gameState.level);
+        animate();
+    } else {
+        initLevel(gameState.level);
+    }
+}
+
+function restartLevel() {
+    document.getElementById('crashScreen').style.display = 'none';
+    initLevel(gameState.level);
+}
+
+function nextLevel() {
+    document.getElementById('winScreen').style.display = 'none';
+    gameState.level++;
+    initLevel(gameState.level);
+}
+
+/**
+ * Main Loop
+ */
+function animate() {
+    // Background
+    ctx.fillStyle = '#374151';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Grid
+    ctx.strokeStyle = '#4b5563';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const gridSize = 80;
+    const offsetX = (canvas.width / 2) % gridSize;
+    const offsetY = (canvas.height / 2) % gridSize;
+    
+    for(let x=offsetX; x<canvas.width; x+=gridSize) { ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); }
+    for(let y=offsetY; y<canvas.height; y+=gridSize) { ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); }
+    ctx.stroke();
+
+    if (gameState.active && player) {
+        player.update();
+        checkCollisions();
+        checkWinCondition();
+    }
+
+    if (targetSpot) targetSpot.draw();
+    obstacles.forEach(obs => obs.draw());
+    if (player) player.draw();
+
+    animationId = requestAnimationFrame(animate);
+}
+
+/**
+ * Collision & Logic
+ */
+function checkCollisions() {
+    if (player.crashed) return;
+    
+    const carBounds = player.getBounds();
+
+    // 1. Screen Edge Checks (Hard limits)
+    for(let p of carBounds) {
+        if (p.x < 5 || p.x > canvas.width - 5 || p.y < 5 || p.y > canvas.height - 5) {
+            crash();
+            return;
+        }
+    }
+
+    // 2. Obstacle Checks
+    for (let obs of obstacles) {
+        // AABB Quick check first
+        let minX = Math.min(carBounds[0].x, carBounds[1].x, carBounds[2].x, carBounds[3].x);
+        let maxX = Math.max(carBounds[0].x, carBounds[1].x, carBounds[2].x, carBounds[3].x);
+        let minY = Math.min(carBounds[0].y, carBounds[1].y, carBounds[2].y, carBounds[3].y);
+        let maxY = Math.max(carBounds[0].y, carBounds[1].y, carBounds[2].y, carBounds[3].y);
+
+        if (minX > obs.x + obs.w || maxX < obs.x || minY > obs.y + obs.h || maxY < obs.y) {
+            continue; // No overlap possible
+        }
+
+        // Detailed Line Intersection
+        const carLines = [
+            {p1: carBounds[0], p2: carBounds[1]},
+            {p1: carBounds[1], p2: carBounds[2]},
+            {p1: carBounds[2], p2: carBounds[3]},
+            {p1: carBounds[3], p2: carBounds[0]}
+        ];
+        
+        const obsLines = [
+            {p1: {x: obs.x, y: obs.y}, p2: {x: obs.x + obs.w, y: obs.y}},
+            {p1: {x: obs.x + obs.w, y: obs.y}, p2: {x: obs.x + obs.w, y: obs.y + obs.h}},
+            {p1: {x: obs.x + obs.w, y: obs.y + obs.h}, p2: {x: obs.x, y: obs.y + obs.h}},
+            {p1: {x: obs.x, y: obs.y + obs.h}, p2: {x: obs.x, y: obs.y}}
+        ];
+
+        // Check if a point is INSIDE the rectangle (for full overlap)
+        for (let p of carBounds) {
+             if (p.x >= obs.x && p.x <= obs.x + obs.w && p.y >= obs.y && p.y <= obs.y + obs.h) {
+                 crash(); return;
+             }
+        }
+
+        // Check intersections
+        for (let l1 of carLines) {
+            for (let l2 of obsLines) {
+                if (getLineIntersection(l1.p1, l1.p2, l2.p1, l2.p2)) {
+                    crash(); return;
+                }
+            }
+        }
+    }
+}
+
+function checkWinCondition() {
+    if (targetSpot.checkParked(player)) {
+        gameState.parkedTimer++;
+        if (gameState.parkedTimer > 40) {
+            gameState.active = false;
+            document.getElementById('statusText').innerText = "PARKED!";
+            document.getElementById('statusText').className = "text-xl font-bold text-green-500";
+            document.getElementById('winScreen').style.display = 'block';
+        } else {
+             document.getElementById('statusText').innerText = "HOLD IT...";
+             document.getElementById('statusText').className = "text-xl font-bold text-green-300";
+        }
+    } else {
+        gameState.parkedTimer = 0;
+        document.getElementById('statusText').innerText = "PARK THE CAR";
+        document.getElementById('statusText').className = "text-xl font-bold text-yellow-400";
+    }
+}
+
+function crash() {
+    player.crashed = true;
+    player.speed = 0;
+    gameState.active = false;
+    document.getElementById('crashScreen').style.display = 'block';
+}
+
+function normalizeAngle(angle) {
+    angle = angle % (Math.PI * 2);
+    if (angle < 0) angle += Math.PI * 2;
+    return angle;
+}
+
+function getLineIntersection(p0, p1, p2, p3) {
+    let s1_x = p1.x - p0.x;     let s1_y = p1.y - p0.y;
+    let s2_x = p3.x - p2.x;     let s2_y = p3.y - p2.y;
+    let s = (-s1_y * (p0.x - p2.x) + s1_x * (p0.y - p2.y)) / (-s2_x * s1_y + s1_x * s2_y);
+    let t = ( s2_x * (p0.y - p2.y) - s2_y * (p0.x - p2.x)) / (-s2_x * s1_y + s1_x * s2_y);
+    return (s >= 0 && s <= 1 && t >= 0 && t <= 1);
+}
+
+function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+    if (typeof stroke === 'undefined') stroke = true;
+    if (typeof radius === 'undefined') radius = 5;
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    if (fill) ctx.fill();
+    if (stroke) ctx.stroke();
+}
+
+/**
+ * Event Listeners
+ */
+window.addEventListener('keydown', (e) => {
+    if (keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.code)) {
+        keys[e.key] = true;
+        keys[e.code] = true;
+        if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"].includes(e.code)) e.preventDefault();
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    if (keys.hasOwnProperty(e.key) || keys.hasOwnProperty(e.code)) {
+        keys[e.key] = false;
+        keys[e.code] = false;
+    }
+});
+
+// Robust Touch Handling
+const touchButtons = document.querySelectorAll('.control-btn');
+touchButtons.forEach(btn => {
+    btn.addEventListener('touchstart', (e) => {
+        e.preventDefault(); // Stop mouse emulation
+        btn.classList.add('active');
+    }, {passive: false});
+    
+    btn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        btn.classList.remove('active');
+    }, {passive: false});
+
+    // Handle slide-off
+    btn.addEventListener('touchcancel', (e) => {
+        btn.classList.remove('active');
+    });
+});
+
+// Prevent default pinch zoom
+document.addEventListener('gesturestart', function(e) { e.preventDefault(); });
+</script>
+</body>
+</html>
