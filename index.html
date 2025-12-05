@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Parking Adventure AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1f2937;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+        }
+        /* UI Layer - Fixed on screen */
+        .ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            z-index: 10;
+        }
+        .hud-top {
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            height: 140px; 
+            pointer-events: none;
+        }
+        
+        .level-info {
+            margin-left: 140px; 
+            transition: margin-left 0.3s;
+            pointer-events: auto;
+        }
+        
+        /* AI Instructor Bubble */
+        .instructor-bubble {
+            position: absolute;
+            top: 100px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            color: #1f2937;
+            padding: 15px;
+            border-radius: 12px 0 12px 12px;
+            max-width: 250px;
+            font-size: 14px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            display: none;
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: auto;
+            border-left: 4px solid #8b5cf6;
+        }
+        @keyframes popIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        @media (max-width: 450px) {
+            .level-info { margin-left: 110px; } 
+            .hud-top { padding: 15px; }
+            .instructor-bubble { top: 140px; right: 10px; max-width: 200px; }
+        }
+
+        /* Modals */
+        .modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(17, 24, 39, 0.98);
+            color: white;
+            padding: 30px;
+            border-radius: 16px;
+            text-align: center;
+            border: 2px solid #8b5cf6; /* Purple for AI */
+            pointer-events: auto;
+            display: none;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+            width: 85%;
+            max-width: 450px;
+            z-index: 100;
+        }
+        .modal h2 { margin-top: 0; font-size: 2rem; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 2px; }
+        .modal p { color: #d1d5db; margin-bottom: 1.5rem; line-height: 1.5; }
+        
+        /* Inputs */
+        .ai-input {
+            width: 100%;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid #4b5563;
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        .ai-input:focus { outline: 2px solid #8b5cf6; border-color: transparent; }
+
+        .btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 800;
+            width: 100%;
+            text-transform: uppercase;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: transform 0.1s;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn:active { transform: scale(0.96); }
+        .btn-purple { background: #7c3aed; border: 2px solid #5b21b6; } /* AI Buttons */
+        .btn-purple:hover { background: #8b5cf6; }
+        .btn-green { background: #22c55e; border: 2px solid #15803d; }
+        .btn-red { background: #ef4444; border: 2px solid #b91c1c; }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Report Card Styles */
+        .report-grade {
+            font-size: 4rem;
+            font-weight: 900;
+            color: #4ade80;
+            text-shadow: 0 0 20px rgba(74, 222, 128, 0.5);
+            margin: 10px 0;
+        }
+        .report-stats {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            font-family: monospace;
+            color: #9ca3af;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+
+        /* Controls */
+        .controls {
+            display: none;
+            pointer-events: auto;
+            width: 100%;
+            padding: 20px;
+            box-sizing: border-box;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 20px;
+        }
+        .d-pad, .pedals { display: flex; gap: 20px; }
+        .control-btn {
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(8px);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 32px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            transition: all 0.1s;
+        }
+        .control-btn.active {
+            background: rgba(255, 255, 255, 0.4);
+            transform: scale(0.9);
+            border-color: white;
+        }
+        .rect-btn { width: 70px; height: 100px; border-radius: 15px; }
+        .brake { border-color: #f87171; background: rgba(239, 68, 68, 0.2); }
+        .gas { border-color: #4ade80; background: rgba(34, 197, 94, 0.2); }
+
+        @media (hover: none) and (pointer: coarse) {
+            .controls { display: flex; }
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="ui-layer">
+        <div class="hud-top">
+            <div class="level-info">
+                <div class="text-3xl font-black text-blue-400 italic">LEVEL <span id="levelDisplay">1</span></div>
+                <div class="text-sm font-mono text-gray-400" id="objectiveText">Learn to park</div>
+                <!-- AI Help Button -->
+                <button onclick="askInstructor('help')" class="mt-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold py-1 px-3 rounded-full flex items-center gap-1 shadow-lg pointer-events-auto transition">
+                    ✨ ASK INSTRUCTOR
+                </button>
+            </div>
+            
+            <div class="text-right pointer-events-auto">
+                <div class="text-xl font-bold text-yellow-400" id="statusText">DRIVE</div>
+                <div id="navArrow" style="font-size: 24px; color: #4ade80; display:none; margin-top:5px;">➤</div>
+            </div>
+        </div>
+
+        <!-- Instructor Chat Bubble -->
+        <div id="instructorBubble" class="instructor-bubble">
+            <div class="font-bold text-purple-600 mb-1 flex justify-between">
+                <span>AI INSTRUCTOR</span>
+                <span style="cursor:pointer" onclick="document.getElementById('instructorBubble').style.display='none'">×</span>
+            </div>
+            <p id="instructorText">Keep it steady!</p>
+        </div>
+
+        <div class="controls">
+            <div class="d-pad">
+                <div class="control-btn" id="btnLeft">←</div>
+                <div class="control-btn" id="btnRight">→</div>
+            </div>
+            <div class="pedals">
+                <div class="control-btn rect-btn brake" id="btnBrake">B</div>
+                <div class="control-btn rect-btn gas" id="btnGas">A</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- START SCREEN -->
+    <div id="startScreen" class="modal" style="display: block;">
+        <h2 class="text-blue-400">PARKING AI</h2>
+        <p>Master the levels or generate your own.</p>
+        <button class="btn btn-green" onclick="startGame()">START CAMPAIGN</button>
+        <button class="btn btn-purple" onclick="openDreamModal()">✨ DREAM LEVEL GENERATOR</button>
+    </div>
+
+    <!-- DREAM LEVEL MODAL -->
+    <div id="dreamModal" class="modal">
+        <h2 class="text-purple-400">DREAM LEVEL</h2>
+        <p>Describe your nightmare parking scenario:</p>
+        <textarea id="dreamInput" class="ai-input" rows="3" placeholder="e.g., A tiny island surrounded by water with a spiral road..."></textarea>
+        <button id="generateBtn" class="btn btn-purple" onclick="generateDreamLevel()">
+            <span>✨ GENERATE</span>
+        </button>
+        <button class="btn" style="background:transparent; border:1px solid #4b5563" onclick="closeDreamModal()">CANCEL</button>
+    </div>
+
+    <!-- WIN SCREEN / REPORT CARD -->
+    <div id="winScreen" class="modal">
+        <h2 class="text-green-400">PARKED!</h2>
+        
+        <div id="reportCardContent" style="display:none">
+            <div class="report-grade" id="gradeDisplay">A</div>
+            <p class="text-purple-300 italic" id="aiComment">"Calculating performance..."</p>
+            <div class="report-stats">
+                <span>⏱️ <span id="timeStat">0s</span></span>
+                <span>🎮 <span id="moveStat">0</span> Inputs</span>
+            </div>
+        </div>
+        
+        <div id="reportLoading">
+            <p class="text-sm text-gray-400">Generating Performance Report...</p>
+            <div class="loading-spinner"></div>
+        </div>
+
+        <button class="btn btn-green" onclick="nextLevel()">NEXT LEVEL ➤</button>
+        <button class="btn btn-purple" onclick="openDreamModal()">✨ GENERATE NEW</button>
+    </div>
+
+    <!-- CRASH SCREEN -->
+    <div id="crashScreen" class="modal" style="border-color: #ef4444;">
+        <h2 class="text-red-500">ACCIDENT!</h2>
+        <p id="crashMessage">You hit an obstacle.</p>
+        <button class="btn btn-red" onclick="restartLevel()">RETRY LEVEL</button>
+        <button class="btn btn-purple" onclick="askInstructor('crash')">✨ WHAT HAPPENED?</button>
+    </div>
+
+<script>
+/**
+ * GEMINI AI INTEGRATION
+ */
+const apiKey = ""; // System will inject key
+
+async function callGemini(prompt, isJson = false) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+    
+    const generationConfig = isJson ? { 
+        responseMimeType: "application/json",
+        responseSchema: {
+            type: "OBJECT",
+            properties: {
+                name: {type: "STRING"},
+                objective: {type: "STRING"},
+                width: {type: "INTEGER"},
+                height: {type: "INTEGER"},
+                start: {type: "OBJECT", properties: {x: {type: "NUMBER"}, y: {type: "NUMBER"}, angle: {type: "NUMBER"}}},
+                goal: {type: "OBJECT", properties: {x: {type: "NUMBER"}, y: {type: "NUMBER"}, angle: {type: "NUMBER"}}},
+                obstacles: {
+                    type: "ARRAY",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            x: {type: "NUMBER"}, y: {type: "NUMBER"}, w: {type: "NUMBER"}, h: {type: "NUMBER"}, type: {type: "STRING"}
+                        }
+                    }
+                }
+            }
+        }
+    } : {};
+
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: generationConfig
+            })
+        });
+
+        if (!response.ok) throw new Error('AI Busy');
+        const data = await response.json();
+        return data.candidates[0].content.parts[0].text;
+    } catch (e) {
+        console.error(e);
+        return null;
+    }
+}
+
+// Feature 1: AI Instructor
+async function askInstructor(trigger) {
+    const bubble = document.getElementById('instructorBubble');
+    const textEl = document.getElementById('instructorText');
+    
+    // Show loading state
+    bubble.style.display = 'block';
+    textEl.innerHTML = '<span class="loading-spinner" style="width:14px; height:14px; border-width:2px;"></span> Thinking...';
+
+    let prompt = "";
+    if (trigger === 'crash') {
+        prompt = `You are a sarcastic driving instructor. The player just crashed their car in a parking game level called "${currentLevel.name}". Give a short, funny, 1-sentence roast about their driving.`;
+    } else if (trigger === 'help') {
+        prompt = `You are a helpful but stern driving instructor. The player is in a level called "${currentLevel.name}" with objective "${currentLevel.objective}". They are currently at x:${Math.round(player.x)}, y:${Math.round(player.y)} and the goal is at x:${Math.round(gameState.target.x)}, y:${Math.round(gameState.target.y)}. Give 1 short sentence of tactical advice on how to reach the goal.`;
+    }
+
+    const reply = await callGemini(prompt);
+    textEl.innerText = reply || "Radio static... (AI unavailable)";
+}
+
+// Feature 2: Level Generator
+function openDreamModal() {
+    document.getElementById('startScreen').style.display = 'none';
+    document.getElementById('winScreen').style.display = 'none';
+    document.getElementById('dreamModal').style.display = 'block';
+}
+
+function closeDreamModal() {
+    document.getElementById('dreamModal').style.display = 'none';
+    document.getElementById('startScreen').style.display = 'block';
+}
+
+async function generateDreamLevel() {
+    const input = document.getElementById('dreamInput').value;
+    if (!input) return;
+
+    const btn = document.getElementById('generateBtn');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="loading-spinner"></span> GENERATING...';
+    btn.disabled = true;
+
+    const prompt = `
+    Generate a 2D top-down parking game level based on this description: "${input}".
+    The output must be JSON.
+    Coordinate system: x (0 to width), y (0 to height).
+    Map size should be appropriate (min 1000x1000, max 2000x2000).
+    Obstacle types: 'wall', 'building', 'water', 'grass', 'curb'.
+    Ensure the 'goal' is reachable from 'start'.
+    Ensure obstacles do not overlap start or goal.
+    `;
+
+    const jsonStr = await callGemini(prompt, true);
+    
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+
+    if (jsonStr) {
+        try {
+            const levelData = JSON.parse(jsonStr);
+            // Sanitize and Normalize
+            levelData.w = levelData.width || 1000;
+            levelData.h = levelData.height || 1000;
+            
+            // Add to levels and init
+            LevelData.push(levelData);
+            document.getElementById('dreamModal').style.display = 'none';
+            initLevel(LevelData.length); 
+            // Intro commentary
+            setTimeout(() => askInstructor('help'), 1000);
+        } catch (e) {
+            alert("AI generation failed. Try a simpler description.");
+        }
+    } else {
+        alert("AI is offline. Check API key.");
+    }
+}
+
+// Feature 3: Performance Report Card
+async function generateReportCard() {
+    document.getElementById('reportLoading').style.display = 'block';
+    document.getElementById('reportCardContent').style.display = 'none';
+    
+    const timeTaken = ((Date.now() - gameState.startTime) / 1000).toFixed(1);
+    const moves = gameState.inputCount;
+    
+    // Update Stats UI immediately
+    document.getElementById('timeStat').innerText = timeTaken + 's';
+    document.getElementById('moveStat').innerText = moves;
+
+    const prompt = `
+    You are a strict driving examiner. 
+    The player just completed a parking level "${currentLevel.name}".
+    Time: ${timeTaken} seconds.
+    Inputs (Moves): ${moves}.
+    
+    Generate a JSON response with:
+    1. "grade": A letter grade (A+, A, B, C, D, F) based on efficiency. Faster time and fewer moves = better grade.
+    2. "comment": A short, witty 1-sentence comment about their driving style.
+    `;
+    
+    const jsonStr = await callGemini(prompt, true);
+    
+    if (jsonStr) {
+        try {
+            const report = JSON.parse(jsonStr);
+            document.getElementById('gradeDisplay').innerText = report.grade;
+            // Color grade
+            const color = report.grade.startsWith('A') ? '#4ade80' : (report.grade.startsWith('F') ? '#ef4444' : '#fbbf24');
+            document.getElementById('gradeDisplay').style.color = color;
+            document.getElementById('aiComment').innerText = `"${report.comment}"`;
+        } catch(e) {
+            document.getElementById('gradeDisplay').innerText = "B";
+            document.getElementById('aiComment').innerText = "Solid parking job.";
+        }
+    }
+    
+    document.getElementById('reportLoading').style.display = 'none';
+    document.getElementById('reportCardContent').style.display = 'block';
+}
+
+/**
+ * ENGINE & CONFIG
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let animationId;
+
+// Game State
+let gameState = {
+    level: 1,
+    active: false,
+    parkedTimer: 0,
+    camera: { x: 0, y: 0 },
+    startTime: 0,
+    inputCount: 0
+};
+
+// Physics Constants
+const PHYSICS = {
+    maxSpeed: 6,
+    reverseSpeed: -3,
+    acceleration: 0.2,
+    friction: 0.08,
+    turnSpeed: 0.06,
+    brakeForce: 0.4
+};
+
+// Input
+const keys = { w: false, s: false, a: false, d: false, Space: false, ArrowUp:false, ArrowDown:false, ArrowLeft:false, ArrowRight:false };
+
+/**
+ * Game Objects
+ */
+class Car {
+    constructor(x, y, angle) {
+        this.x = x;
+        this.y = y;
+        this.width = 38;
+        this.height = 70;
+        this.angle = angle;
+        this.speed = 0;
+        this.color = '#3b82f6';
+        this.crashed = false;
+        this.trail = [];
+    }
+
+    update() {
+        if (this.crashed || !gameState.active) return;
+
+        const up = keys.ArrowUp || keys.w || document.getElementById('btnGas').classList.contains('active');
+        const down = keys.ArrowDown || keys.s || document.getElementById('btnBrake').classList.contains('active');
+        const left = keys.ArrowLeft || keys.a || document.getElementById('btnLeft').classList.contains('active');
+        const right = keys.ArrowRight || keys.d || document.getElementById('btnRight').classList.contains('active');
+        const brake = keys.Space;
+
+        if (up) this.speed += PHYSICS.acceleration;
+        else if (down) this.speed -= PHYSICS.acceleration;
+        else {
+            if (this.speed > 0) this.speed -= PHYSICS.friction;
+            if (this.speed < 0) this.speed += PHYSICS.friction;
+            if (Math.abs(this.speed) < PHYSICS.friction) this.speed = 0;
+        }
+
+        if (brake) {
+            if (this.speed > 0) this.speed -= PHYSICS.brakeForce;
+            if (this.speed < 0) this.speed += PHYSICS.brakeForce;
+            if (Math.abs(this.speed) < PHYSICS.brakeForce) this.speed = 0;
+        }
+
+        if (this.speed > PHYSICS.maxSpeed) this.speed = PHYSICS.maxSpeed;
+        if (this.speed < PHYSICS.reverseSpeed) this.speed = PHYSICS.reverseSpeed;
+
+        if (Math.abs(this.speed) > 0.1) {
+            const dir = this.speed > 0 ? 1 : -1;
+            if (left) this.angle -= PHYSICS.turnSpeed * dir;
+            if (right) this.angle += PHYSICS.turnSpeed * dir;
+        }
+
+        this.x += Math.sin(this.angle) * this.speed;
+        this.y -= Math.cos(this.angle) * this.speed;
+
+        // Tire tracks
+        if (Math.abs(this.speed) > 2 && Math.random() > 0.8) {
+            this.trail.push({x: this.x, y: this.y, angle: this.angle, alpha: 0.4});
+            if (this.trail.length > 30) this.trail.shift();
+        }
+    }
+
+    draw(camX, camY) {
+        // Draw Trail relative to camera
+        this.trail.forEach(t => {
+            t.alpha -= 0.005;
+            if (t.alpha > 0) {
+                ctx.save();
+                ctx.translate(t.x - camX, t.y - camY);
+                ctx.rotate(t.angle);
+                ctx.fillStyle = `rgba(0,0,0,${t.alpha})`;
+                ctx.fillRect(-12, -10, 6, 6);
+                ctx.fillRect(6, -10, 6, 6);
+                ctx.restore();
+            }
+        });
+
+        ctx.save();
+        ctx.translate(this.x - camX, this.y - camY);
+        ctx.rotate(this.angle);
+
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        roundRect(ctx, -this.width/2 + 5, -this.height/2 + 5, this.width, this.height, 8, true, false);
+
+        // Car Body
+        ctx.fillStyle = this.crashed ? '#ef4444' : this.color;
+        roundRect(ctx, -this.width/2, -this.height/2, this.width, this.height, 8, true, false);
+
+        // Roof
+        ctx.fillStyle = '#111827';
+        roundRect(ctx, -this.width/2 + 4, -this.height/2 + 15, this.width - 8, this.height - 25, 4, true, false);
+        
+        // Windows
+        ctx.fillStyle = '#60a5fa'; // Blue tint glass
+        ctx.fillRect(-this.width/2 + 6, -this.height/2 + 50, this.width - 12, 6); // Rear
+        ctx.fillRect(-this.width/2 + 6, -this.height/2 + 18, this.width - 12, 10); // Front
+
+        // Lights
+        ctx.fillStyle = '#fef08a';
+        ctx.beginPath(); ctx.arc(-12, -this.height/2 + 2, 3, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(12, -this.height/2 + 2, 3, 0, Math.PI*2); ctx.fill();
+
+        // Brake Lights
+        const isBraking = keys.ArrowDown || keys.s || keys.Space || document.getElementById('btnBrake').classList.contains('active');
+        ctx.fillStyle = isBraking ? '#ff0000' : '#7f1d1d';
+        ctx.beginPath(); ctx.arc(-12, this.height/2 - 2, 3, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(12, this.height/2 - 2, 3, 0, Math.PI*2); ctx.fill();
+
+        ctx.restore();
+    }
+
+    getBounds() {
+        const cos = Math.cos(this.angle), sin = Math.sin(this.angle);
+        const hw = this.width / 2, hh = this.height / 2;
+        const corners = [{x: -hw, y: -hh}, {x: hw, y: -hh}, {x: hw, y: hh}, {x: -hw, y: hh}];
+        return corners.map(p => ({
+            x: this.x + (p.x * cos - p.y * sin),
+            y: this.y + (p.x * sin + p.y * cos)
+        }));
+    }
+}
+
+class Obstacle {
+    constructor(x, y, w, h, type) {
+        this.x = x; this.y = y; this.w = w; this.h = h; this.type = type;
+    }
+    draw(camX, camY) {
+        // Optimization: Don't draw if far off screen
+        if (this.x - camX > canvas.width + 100 || this.x + this.w - camX < -100 ||
+            this.y - camY > canvas.height + 100 || this.y + this.h - camY < -100) return;
+
+        const drawX = this.x - camX;
+        const drawY = this.y - camY;
+
+        if (this.type === 'building') {
+            ctx.fillStyle = '#374151'; // Dark grey building
+            ctx.fillRect(drawX, drawY, this.w, this.h);
+            ctx.fillStyle = '#1f2937';
+            ctx.fillRect(drawX + 10, drawY + 10, this.w - 20, this.h - 20);
+        } else if (this.type === 'grass') {
+            ctx.fillStyle = '#064e3b';
+            ctx.fillRect(drawX, drawY, this.w, this.h);
+            ctx.strokeStyle = '#065f46';
+            ctx.beginPath();
+            for(let i=0; i<this.w; i+=40) { ctx.moveTo(drawX+i, drawY); ctx.lineTo(drawX+i+20, drawY+20); }
+            ctx.stroke();
+        } else if (this.type === 'water') {
+            ctx.fillStyle = '#1e3a8a';
+            ctx.fillRect(drawX, drawY, this.w, this.h);
+        } else {
+            ctx.fillStyle = '#9ca3af';
+            ctx.fillRect(drawX, drawY, this.w, this.h);
+            ctx.fillStyle = '#d1d5db'; // Top highlight
+            ctx.fillRect(drawX, drawY, this.w, 5);
+        }
+    }
+}
+
+class ParkingSpot {
+    constructor(x, y, angle) {
+        this.x = x; this.y = y; this.angle = angle;
+        this.width = 50; this.height = 80;
+    }
+    draw(camX, camY) {
+        ctx.save();
+        ctx.translate(this.x - camX, this.y - camY);
+        ctx.rotate(this.angle);
+
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([10, 10]);
+        ctx.beginPath();
+        ctx.moveTo(-this.width/2, -this.height/2);
+        ctx.lineTo(-this.width/2, this.height/2);
+        ctx.lineTo(this.width/2, this.height/2);
+        ctx.lineTo(this.width/2, -this.height/2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Pulsing "Park Here" zone
+        const alpha = 0.2 + (Math.sin(Date.now()/200)+1)*0.1;
+        ctx.fillStyle = `rgba(52, 211, 153, ${alpha})`;
+        ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
+
+        ctx.restore();
+    }
+    checkParked(car) {
+        const dist = Math.hypot(car.x - this.x, car.y - this.y);
+        let angleDiff = Math.abs(normalizeAngle(car.angle) - normalizeAngle(this.angle));
+        if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
+        return (dist < 20 && angleDiff < 0.25 && Math.abs(car.speed) < 0.1);
+    }
+}
+
+/**
+ * LEVEL DATA
+ */
+const LevelData = [
+    {
+        name: "Training Grounds",
+        objective: "Park between the lines",
+        w: 1000, h: 1000,
+        start: { x: 500, y: 800, angle: 0 },
+        goal: { x: 500, y: 200, angle: 0 },
+        obstacles: [
+            new Obstacle(0, 0, 1000, 50, 'wall'),
+            new Obstacle(0, 950, 1000, 50, 'wall'),
+            new Obstacle(0, 0, 50, 1000, 'wall'),
+            new Obstacle(950, 0, 50, 1000, 'wall'),
+            new Obstacle(300, 400, 400, 40, 'curb'),
+            new Obstacle(200, 200, 50, 50, 'building')
+        ]
+    },
+    {
+        name: "The Commute",
+        objective: "Drive down the highway",
+        w: 800, h: 2500,
+        start: { x: 400, y: 2300, angle: 0 },
+        goal: { x: 600, y: 200, angle: Math.PI/2 },
+        obstacles: [
+            new Obstacle(0, 0, 200, 2500, 'grass'),
+            new Obstacle(600, 0, 200, 2500, 'grass'),
+            new Obstacle(200, 1800, 100, 40, 'curb'),
+            new Obstacle(500, 1500, 100, 40, 'curb'),
+            new Obstacle(350, 1000, 100, 200, 'water'),
+            new Obstacle(200, 0, 300, 150, 'building'),
+            new Obstacle(650, 250, 150, 100, 'wall')
+        ]
+    },
+    {
+        name: "City Center",
+        objective: "Navigate the tight corners",
+        w: 1500, h: 1500,
+        start: { x: 100, y: 1300, angle: Math.PI/2 },
+        goal: { x: 1300, y: 200, angle: Math.PI },
+        obstacles: [
+            new Obstacle(0, 0, 1500, 50, 'wall'),
+            new Obstacle(0, 1450, 1500, 50, 'wall'),
+            new Obstacle(0, 0, 50, 1500, 'wall'),
+            new Obstacle(1450, 0, 50, 1500, 'wall'),
+            new Obstacle(250, 250, 400, 400, 'building'),
+            new Obstacle(850, 250, 400, 400, 'building'),
+            new Obstacle(250, 850, 400, 400, 'building'),
+            new Obstacle(850, 850, 400, 400, 'building'),
+            new Obstacle(700, 500, 40, 80, 'curb'),
+            new Obstacle(700, 900, 40, 80, 'curb')
+        ]
+    }
+];
+
+let player, currentLevel, obstacles = [];
+
+function initLevel(idx) {
+    if (idx > LevelData.length) idx = 1;
+    gameState.level = idx;
+    
+    const data = LevelData[idx - 1];
+    currentLevel = data;
+    
+    player = new Car(data.start.x, data.start.y, data.start.angle);
+    // Convert raw data objects to class instances
+    obstacles = data.obstacles.map(o => new Obstacle(o.x, o.y, o.w, o.h, o.type));
+    gameState.target = new ParkingSpot(data.goal.x, data.goal.y, data.goal.angle);
+    
+    document.getElementById('levelDisplay').innerText = idx;
+    document.getElementById('objectiveText').innerText = data.objective;
+    document.getElementById('statusText').innerText = "DRIVE";
+    document.getElementById('statusText').className = "text-xl font-bold text-yellow-400";
+    
+    // Hide bubble on new level
+    document.getElementById('instructorBubble').style.display = 'none';
+
+    gameState.active = true;
+    gameState.parkedTimer = 0;
+    gameState.startTime = Date.now();
+    gameState.inputCount = 0;
+    updateCamera(); 
+}
+
+function updateCamera() {
+    let targetX = player.x - canvas.width / 2;
+    let targetY = player.y - canvas.height / 2;
+    gameState.camera.x += (targetX - gameState.camera.x) * 0.1;
+    gameState.camera.y += (targetY - gameState.camera.y) * 0.1;
+}
+
+function startGame() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    document.getElementById('startScreen').style.display = 'none';
+    if (!animationId) {
+        initLevel(gameState.level);
+        animate();
+    } else {
+        initLevel(gameState.level);
+    }
+}
+
+function nextLevel() {
+    document.getElementById('winScreen').style.display = 'none';
+    initLevel(gameState.level + 1);
+}
+
+function restartLevel() {
+    document.getElementById('crashScreen').style.display = 'none';
+    initLevel(gameState.level);
+}
+
+/**
+ * Main Loop
+ */
+function animate() {
+    if (gameState.active) {
+        player.update();
+        checkCollisions();
+        checkWin();
+        updateCamera();
+    }
+    
+    // 1. Draw Main World
+    ctx.fillStyle = '#1f2937';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.save();
+    ctx.translate(-gameState.camera.x, -gameState.camera.y);
+    
+    // World Grid
+    ctx.strokeStyle = '#374151';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const startX = Math.floor(gameState.camera.x / 100) * 100;
+    const startY = Math.floor(gameState.camera.y / 100) * 100;
+    for(let x=startX; x<startX+canvas.width+100; x+=100) { ctx.moveTo(x, startY); ctx.lineTo(x, startY+canvas.height+200); }
+    for(let y=startY; y<startY+canvas.height+100; y+=100) { ctx.moveTo(startX, y); ctx.lineTo(startX+canvas.width+200, y); }
+    ctx.stroke();
+
+    gameState.target.draw(0, 0);
+    obstacles.forEach(o => o.draw(0, 0));
+    player.draw(0, 0);
+    ctx.restore();
+
+    // 2. Draw Mini Map
+    drawMiniMap();
+
+    // 3. UI Arrows
+    updateNavArrow();
+
+    animationId = requestAnimationFrame(animate);
+}
+
+function drawMiniMap() {
+    // Mini Map Configuration
+    const mapSize = window.innerWidth < 450 ? 100 : 130; // Responsive size
+    const mapScale = 0.12; // Zoom level
+    const margin = 20;
+
+    ctx.save();
+    
+    // Draw Frame
+    ctx.translate(margin, margin);
+    
+    // Background & Border
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.fillRect(0, 0, mapSize, mapSize);
+    ctx.strokeStyle = '#60a5fa'; // Blue Border
+    ctx.lineWidth = 3;
+    ctx.strokeRect(0, 0, mapSize, mapSize);
+    
+    // Radar label
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '10px monospace';
+    ctx.fillText("RADAR", 5, 12);
+
+    // Clip to square
+    ctx.beginPath();
+    ctx.rect(0, 0, mapSize, mapSize);
+    ctx.clip();
+
+    // Camera Transform for Mini Map
+    // We center the map on the player
+    const cx = player.x;
+    const cy = player.y;
+
+    ctx.translate(mapSize/2, mapSize/2); // Move to center of map
+    ctx.scale(mapScale, mapScale);       // Scale down world
+    ctx.translate(-cx, -cy);             // Move world so player is at center
+
+    // 1. Draw Goal (Green Box)
+    const t = gameState.target;
+    ctx.fillStyle = '#4ade80'; 
+    ctx.fillRect(t.x - t.width/2, t.y - t.height/2, t.width, t.height);
+
+    // 2. Draw Obstacles (Simple Shapes)
+    obstacles.forEach(o => {
+        if (o.type === 'wall' || o.type === 'building') ctx.fillStyle = '#9ca3af';
+        else if (o.type === 'water') ctx.fillStyle = '#3b82f6';
+        else if (o.type === 'grass') ctx.fillStyle = '#065f46';
+        else ctx.fillStyle = '#d1d5db';
+        ctx.fillRect(o.x, o.y, o.w, o.h);
+    });
+
+    // 3. Draw Player (Bright Blue Box)
+    ctx.translate(player.x, player.y);
+    ctx.rotate(player.angle);
+    ctx.fillStyle = '#60a5fa';
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 10; // Scaled down this will be thin
+    ctx.fillRect(-player.width/2, -player.height/2, player.width, player.height);
+    
+    ctx.restore();
+}
+
+function updateNavArrow() {
+    const arrow = document.getElementById('navArrow');
+    const dx = gameState.target.x - player.x;
+    const dy = gameState.target.y - player.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist > 300) {
+        arrow.style.display = 'block';
+        let angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        arrow.style.transform = `rotate(${angle}deg)`;
+    } else {
+        arrow.style.display = 'none';
+    }
+}
+
+/**
+ * Collision & Math Helper
+ */
+function checkCollisions() {
+    const carBounds = player.getBounds();
+    for (let obs of obstacles) {
+        if (player.x + 50 < obs.x || player.x - 50 > obs.x + obs.w ||
+            player.y + 50 < obs.y || player.y - 50 > obs.y + obs.h) continue;
+
+        const carLines = getPolyLines(carBounds);
+        const obsLines = getRectLines(obs.x, obs.y, obs.w, obs.h);
+
+        for (let l1 of carLines) {
+            for (let l2 of obsLines) {
+                if (getIntersection(l1, l2)) { crash(); return; }
+            }
+        }
+        for (let p of carBounds) {
+            if(p.x > obs.x && p.x < obs.x+obs.w && p.y > obs.y && p.y < obs.y+obs.h) { crash(); return; }
+        }
+    }
+}
+
+function checkWin() {
+    if (gameState.target.checkParked(player)) {
+        gameState.parkedTimer++;
+        if (gameState.parkedTimer > 50) {
+            gameState.active = false;
+            document.getElementById('statusText').innerText = "SECURE";
+            document.getElementById('statusText').className = "text-xl font-bold text-green-500";
+            document.getElementById('winScreen').style.display = 'block';
+            
+            // Trigger AI Report Card
+            generateReportCard();
+        } else {
+            document.getElementById('statusText').innerText = "HOLD...";
+        }
+    } else {
+        gameState.parkedTimer = 0;
+        document.getElementById('statusText').innerText = "DRIVE";
+        document.getElementById('statusText').className = "text-xl font-bold text-yellow-400";
+    }
+}
+
+function crash() {
+    player.crashed = true;
+    player.speed = 0;
+    gameState.active = false;
+    document.getElementById('crashScreen').style.display = 'block';
+}
+
+function normalizeAngle(a) { a = a % (Math.PI*2); return a < 0 ? a + Math.PI*2 : a; }
+function getPolyLines(pts) { return pts.map((p,i) => ({p1: p, p2: pts[(i+1)%pts.length]})); }
+function getRectLines(x,y,w,h) {
+    return [
+        {p1:{x:x,y:y}, p2:{x:x+w,y:y}}, {p1:{x:x+w,y:y}, p2:{x:x+w,y:y+h}},
+        {p1:{x:x+w,y:y+h}, p2:{x:x,y:y+h}}, {p1:{x:x,y:y+h}, p2:{x:x,y:y}}
+    ];
+}
+function getIntersection(l1, l2) {
+    let s1_x = l1.p2.x - l1.p1.x, s1_y = l1.p2.y - l1.p1.y;
+    let s2_x = l2.p2.x - l2.p1.x, s2_y = l2.p2.y - l2.p1.y;
+    let s = (-s1_y * (l1.p1.x - l2.p1.x) + s1_x * (l1.p1.y - l2.p1.y)) / (-s2_x * s1_y + s1_x * s2_y);
+    let t = ( s2_x * (l1.p1.y - l2.p1.y) - s2_y * (l1.p1.x - l2.p1.x)) / (-s2_x * s1_y + s1_x * s2_y);
+    return (s >= 0 && s <= 1 && t >= 0 && t <= 1);
+}
+function roundRect(ctx, x, y, w, h, r, f, s) {
+    ctx.beginPath(); ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+    ctx.lineTo(x+w,y+h-r); ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h); ctx.lineTo(x+r,y+h);
+    ctx.quadraticCurveTo(x,y+h,x,y+h-r); ctx.lineTo(x,y+r); ctx.quadraticCurveTo(x,y,x+r,y);
+    ctx.closePath(); if(f)ctx.fill(); if(s)ctx.stroke();
+}
+
+/**
+ * Event Listeners
+ */
+function handleInput(key, state) {
+    if (state && !keys[key]) gameState.inputCount++; // Only increment on key down
+    keys[key] = state;
+}
+
+window.addEventListener('keydown', e => {
+    if(keys.hasOwnProperty(e.key)) handleInput(e.key, true);
+    if(keys.hasOwnProperty(e.code)) handleInput(e.code, true);
+    if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight","Space"].includes(e.code)) e.preventDefault();
+});
+window.addEventListener('keyup', e => {
+    if(keys.hasOwnProperty(e.key)) handleInput(e.key, false);
+    if(keys.hasOwnProperty(e.code)) handleInput(e.code, false);
+});
+window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
+
+document.querySelectorAll('.control-btn').forEach(btn => {
+    btn.addEventListener('touchstart', e => { e.preventDefault(); btn.classList.add('active'); gameState.inputCount++; }, {passive:false});
+    btn.addEventListener('touchend', e => { e.preventDefault(); btn.classList.remove('active'); }, {passive:false});
+});
+
+</script>
+</body>
+</html>
